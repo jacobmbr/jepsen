@@ -142,7 +142,7 @@
                   :distribution distribution))))
 
     (flaky! [net test]
-      (flaky! net test {:lossiness 30})
+      (flaky! net test {:lossiness 30}))
 
     (flaky! [net test {:keys [lossiness]
                        :or   {lossiness 30}}]
