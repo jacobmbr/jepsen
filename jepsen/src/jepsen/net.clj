@@ -22,7 +22,7 @@
          :variance     (in ms)
          :distribution (e.g. :normal)")
   (flaky! [net test]
-          [net test ops]
+          [net test opts]
           "Introduces randomized packet loss with options:
 
           :lossiness   (as a percentage)")
