@@ -142,6 +142,9 @@
 
     (setup-hostfile!)
 
+    (meh (c/exec :rm "/etc/apt/sources.list.d/backports.list"))
+    (c/exec :sed :-i "'/jessie-updates/d'" "/etc/apt/sources.list")
+
     (maybe-update!)
 
     (c/su
