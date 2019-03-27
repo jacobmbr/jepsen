@@ -10,7 +10,7 @@
                  [org.clojure/tools.cli "0.4.1"]
                  [clj-time "0.11.0"]
                  [jepsen.txn "0.1.0"]
-                 [knossos "0.3.4-SNAPSHOT" :exclusions [org.slf4j/slf4j-log4j12]]
+                 [knossos "0.3.4" :exclusions [org.slf4j/slf4j-log4j12]]
                  [tea-time "1.0.1"]
                  [clj-ssh "0.5.14"]
                  [gnuplot "0.1.1"]
@@ -31,9 +31,12 @@
   :jvm-opts ["-Xmx32g" "-XX:+UseConcMarkSweepGC" "-XX:+UseParNewGC"
              "-XX:+CMSParallelRemarkEnabled" "-XX:+AggressiveOpts"
              "-XX:+UseFastAccessorMethods" "-server"
-             ;"-XX:-OmitStackTraceInFastThrow"
+             ; "-XX:-OmitStackTraceInFastThrow"
              ]
-  :test-selectors {:default (complement :integration)
+  :test-selectors {:default (fn [m]
+                              (not (or (:integration m)
+                                       (:logging m))))
+                   :logging     :logging
                    :integration :integration}
   :codox {:output-path "doc/"
           :source-uri "https://github.com/jepsen-io/jepsen/blob/{version}/jepsen/{filepath}#L{line}"
