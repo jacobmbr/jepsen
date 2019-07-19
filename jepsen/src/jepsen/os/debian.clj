@@ -136,6 +136,15 @@
     (install [:oracle-java8-installer])
     (install [:oracle-java8-set-default])))
 
+(defn install-jdk11!
+  "Installs an openjdk jdk11 via stretch-backports."
+  []
+  (c/su
+    (add-repo!
+      "stretch-backports"
+      "deb http://deb.debian.org/debian stretch-backports main")
+    (install [:openjdk-11-jdk])))
+
 (deftype Debian []
   os/OS
   (setup! [_ test node]
@@ -162,7 +171,8 @@
                 :iputils-ping
                 :iproute
                 :rsyslog
-                :logrotate])
+                :logrotate
+                :dirmngr])
       (try+ (install [:libzip4])
             (catch [:exit 100] _
               ; Wrong package name; let's use the old one for jessie

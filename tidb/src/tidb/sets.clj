@@ -1,56 +1,98 @@
 (ns tidb.sets
   (:refer-clojure :exclude [test])
-  (:require
-    [jepsen
-      [client :as client]
-      [checker :as checker]
-      [generator :as gen]
-    ]
-    [knossos.op :as op]
-    [tidb.sql :refer :all]
-    [tidb.basic :as basic]
-    [clojure.java.jdbc :as j]
-  )
-)
+  (:require [clojure.string :as str]
+            [jepsen [client :as client]
+                    [checker :as checker]
+                    [generator :as gen]]
+            [knossos.op :as op]
+            [tidb.sql :as c :refer :all]
+            [tidb.basic :as basic]))
 
-(defn set-client [node]
-  (reify client/Client
-    (setup! [this test node]
-      (j/with-db-connection [c (conn-spec (first (:nodes test)))]
-        (j/execute! c ["create table if not exists sets
-                       (id     int not null primary key auto_increment,
-                       value bigint not null)"]))
+(defrecord SetClient [conn]
+  client/Client
+  (open! [this test node]
+    (assoc this :conn (c/open node test)))
 
-      (set-client node))
+  (setup! [this test]
+    (c/with-conn-failure-retry conn
+      (c/execute! conn ["create table if not exists sets
+                        (id     int not null primary key auto_increment,
+                        value  bigint not null)"])))
 
-    (invoke! [this test op]
-      (with-txn op [c node]
-        (try
-          (case (:f op)
-            :add  (do (j/insert! c :sets (select-keys op [:value]))
-                      (assoc op :type :ok))
-            :read (->> (j/query c ["select * from sets"])
-                       (mapv :value)
-                       (into (sorted-set))
-                       (assoc op :type :ok, :value))))))
+  (invoke! [this test op]
+    (c/with-error-handling op
+      (c/with-txn-aborts op
+        (case (:f op)
+          :add  (do (c/insert! conn :sets (select-keys op [:value]))
+                    (assoc op :type :ok))
 
-    (teardown! [_ test])))
+          :read (->> (c/query conn ["select * from sets"])
+                     (mapv :value)
+                     (assoc op :type :ok, :value))))))
 
-(defn test
+  (teardown! [_ test])
+
+  (close! [_ test]
+    (c/close! conn)))
+
+; This variant does compare-and-set on a single text value to reveal lost
+; updates.
+(defrecord CasSetClient [conn]
+  client/Client
+  (open! [this test node]
+    (assoc this :conn (c/open node test)))
+
+  (setup! [this test]
+    (c/with-conn-failure-retry conn
+      (c/execute! conn ["create table if not exists sets
+                        (id     int not null primary key,
+                        value   text)"])))
+
+  (invoke! [this test op]
+    (c/with-txn op [c conn]
+      (case (:f op)
+        :add  (let [e (:value op)]
+                (if-let [v (-> (c/query c [(str "select (value) from sets"
+                                                   " where id = 0 "
+                                                   (:read-lock test))])
+                               first
+                               :value)]
+                  (c/execute! c ["update sets set value = ? where id = 0"
+                                    (str v "," e)])
+                  (c/insert! c :sets {:id 0, :value (str e)}))
+                (assoc op :type :ok))
+
+        :read (let [v (-> (c/query c ["select (value) from sets where id = 0"])
+                          first
+                          :value)
+                    v (when v
+                        (->> (str/split v #",")
+                             (map #(Long/parseLong %))))]
+                (assoc op :type :ok, :value v)))))
+
+  (teardown! [_ test])
+
+  (close! [_ test]
+    (c/close! conn)))
+
+(defn adds
+  []
+  (->> (range)
+       (map (fn [x] {:type :invoke, :f :add, :value x}))
+       (gen/seq)))
+
+(defn reads
+  []
+  {:type :invoke, :f :read, :value nil})
+
+(defn workload
   [opts]
-  (basic/basic-test
-    (merge
-    {:name "set"
-     :client {:client (set-client nil)
-              :during (->> (range)
-                          (map (partial array-map
-                                        :type :invoke
-                                        :f :add
-                                        :value))
-                          gen/seq
-                          (gen/stagger 1))
-              :final (gen/once {:type :invoke, :f :read, :value nil})}
-     :checker (checker/compose
-                {:perf (checker/perf)
-                 :set  checker/set})}
-     opts)))
+  (let [c (:concurrency opts)]
+    {:client (SetClient. nil)
+     :generator (->> (gen/reserve (/ c 2) (adds) (reads))
+                     (gen/stagger 1/10))
+     :checker (checker/set-full)}))
+
+(defn cas-workload
+  [opts]
+  (assoc (workload opts) :client (CasSetClient. nil)))
