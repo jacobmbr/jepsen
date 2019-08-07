@@ -6,7 +6,8 @@
             [jepsen.cli :as jc]
             [jepsen.core :as jepsen]
             [jepsen.ignite  [register :as register]
-                            [bank     :as bank]])
+                            [bank     :as bank]
+                            [nemesis  :as nemesis]])
   (:import (org.apache.ignite.cache CacheMode CacheAtomicityMode CacheWriteSynchronizationMode)
            (org.apache.ignite.transactions TransactionConcurrency TransactionIsolation)))
 
@@ -42,6 +43,11 @@
   {"SERIALIZABLE"    TransactionIsolation/SERIALIZABLE
    "READ_COMMITTED"  TransactionIsolation/READ_COMMITTED
    "REPEATABLE_READ" TransactionIsolation/REPEATABLE_READ})
+
+(def nemesis-types
+  {"noop"                   jepsen.nemesis/noop
+  "partition-random-halves" nemesis/partition-random-halves
+  "kill-node"               nemesis/kill-node})
 
 (def opt-spec
   "Command line options for tools.cli"
@@ -89,7 +95,20 @@
     :validate [pos? "Must be positive"]]
    ["-v" "--version VERSION"
     "What version of Apache Ignite to install"
-    :default "2.7.0"]])
+    :default "2.7.0"]
+   ["-o" "--os NAME" "Operating system: either centos or debian."
+    :default  :noop
+    :parse-fn keyword
+    :validate [#{:centos :debian :noop} "One of `centos` or `debian` or 'noop'"]]
+   ["-p" "--pds NAME" "Persistence Data Store."
+    :default  :false
+    :parse-fn str
+    :validate [#{"true" "false"} "One of `true` or `false`"]]
+   ["-nemesis" "--nemesis Nemesis"
+    "What Nemesis to use"
+    :default jepsen.nemesis/noop
+    :parse-fn nemesis-types
+    :validate [identity (jc/one-of nemesis-types)]]])
 
 (defn log-test
   [t]

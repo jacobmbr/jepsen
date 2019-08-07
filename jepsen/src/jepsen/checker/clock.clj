@@ -55,21 +55,21 @@
           nodes       (util/polysort (keys datasets))
           node-names  (short-node-names nodes)
           output-path (.getCanonicalPath (store/path! test (:subdirectory opts)
-                                                      "clock-skew.png"))]
-      (when (seq nodes)
-        (try
-          (g/raw-plot!
-            (concat
-              (perf/preamble output-path)
-              [[:set :title (str (:name test) " clock skew")]
-               [:set :ylabel "Skew (s)"]]
-              (perf/nemesis-regions* history)
-              (perf/nemesis-lines history)
-              [['plot (apply g/list
-                             (for [node node-names]
-                               ["-"
-                                'with 'steps
-                                'title node]))]])
-            (map datasets nodes))
-          (catch java.io.IOException _
-            (throw (IllegalStateException. "Error rendering plot. Check that gnuplot is installed and reachable?"))))))))
+                                                      "clock-skew.png"))
+          plot {:preamble (concat (perf/preamble output-path)
+                                  [[:set :title (str (:name test)
+                                                     " clock skew")]
+                                   [:set :ylabel "Skew (s)"]])
+                :series   (map (fn [node node-name]
+                                 {:title node-name
+                                  :with  :steps
+                                  :data  (get datasets node)})
+                               nodes
+                               node-names)}]
+      (when (perf/has-data? plot)
+        (-> plot
+            (perf/without-empty-series)
+            (perf/with-range)
+            (perf/with-nemeses history (:nemeses (:plot test)))
+            (perf/plot!)))))
+  {:valid? true})

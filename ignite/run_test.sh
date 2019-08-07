@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 lein run test \
   --test bank \
   --time-limit 10 \
@@ -12,4 +13,7 @@ lein run test \
   --transaction-concurrency OPTIMISTIC \
   --transaction-isolation SERIALIZABLE \
   --backups 3 \
-  --version 2.7.0
+  --os noop \
+  --nemesis noop \
+  --version 2.7.0 \
+  --pds true
